@@ -34,7 +34,9 @@ minecraft {
     }
 }
 
-repositories { }
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+}
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
