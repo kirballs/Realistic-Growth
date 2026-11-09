@@ -45,12 +45,15 @@ public final class RealisticGrowthConfig {
     );
 
     public static final ForgeConfigSpec SPEC;
+    private static final ForgeConfigSpec.IntValue DEFAULT_AGE;
     private static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTRY_LIST;
+    private static volatile int defaultAge = -24_000;
     private static volatile Map<ResourceLocation, Integer> growthTimes = Map.of();
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         builder.push("growth_times");
+        DEFAULT_AGE = builder.defineInRange("default_age", -24_000, Integer.MIN_VALUE, -1);
         ENTRY_LIST = builder.defineList("entries", DEFAULT_ENTRIES,
                 value -> value instanceof String);
         builder.pop();
@@ -66,12 +69,18 @@ public final class RealisticGrowthConfig {
         }
     }
 
+    /** Returns the configured fallback age for babies whose entity type has no entry. */
+    public static int defaultAge() {
+        return defaultAge;
+    }
+
     /** Returns an immutable snapshot suitable for use from the game thread. */
     public static Map<ResourceLocation, Integer> growthTimes() {
         return growthTimes;
     }
 
     private static void loadEntries() {
+        defaultAge = DEFAULT_AGE.get();
         Map<ResourceLocation, Integer> parsed = new HashMap<>();
         for (String entry : ENTRY_LIST.get()) {
             String[] parts = entry.split(";", 2);
