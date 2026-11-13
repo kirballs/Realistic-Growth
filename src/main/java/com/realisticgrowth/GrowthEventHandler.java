@@ -27,8 +27,8 @@ public final class GrowthEventHandler {
         }
 
         ResourceLocation entityId = BuiltInRegistries.ENTITY_TYPE.getKey(baby.getType());
-        int configuredAge = RealisticGrowthConfig.growthTimes()
-                .getOrDefault(entityId, RealisticGrowthConfig.defaultAge());
+        // An explicit entry in realisticgrowth-entries.txt wins over growth_times.default_age.
+        int configuredAge = RealisticGrowthConfig.ageFor(entityId);
 
         // A just-created AgeableMob starts with forcedAge and forcedAgeTimer at zero.
         // setAge changes only its normal age, so feeding continues to use the new age.

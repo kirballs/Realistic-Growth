@@ -1,71 +1,53 @@
 package com.realisticgrowth;
 
-import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
-import org.slf4j.Logger;
+import net.minecraftforge.fml.loading.FMLPaths;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-/** Defines the common config and turns its string entries into fast lookups. */
+/**
+ * Defines the common TOML config. Only the fallback {@code growth_times.default_age} lives here;
+ * per-entity entries are kept in {@code config/realisticgrowth-entries.txt} so that Forge's TOML
+ * writer can never flatten the user's formatting. See {@link GrowthEntries}.
+ */
 @Mod.EventBusSubscriber(modid = RealisticGrowth.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class RealisticGrowthConfig {
-    private static final Logger LOGGER = LogUtils.getLogger();
-
-    private static final List<String> DEFAULT_ENTRIES = List.of(
-            "minecraft:chicken;-72000",
-            "minecraft:pig;-120000",
-            "minecraft:sheep;-120000",
-            "minecraft:cow;-168000",
-            "minecraft:horse;-240000",
-            "minecraft:donkey;-240000",
-            "minecraft:mule;-240000",
-            "minecraft:wolf;-120000",
-            "minecraft:cat;-96000",
-            "minecraft:rabbit;-72000",
-            "minecraft:goat;-168000",
-            "minecraft:fox;-96000",
-            "minecraft:turtle;-168000",
-            "minecraft:villager;-480000",
-            "minecraft:mooshroom;-168000",
-            "minecraft:llama;-240000",
-            "minecraft:bee;-48000",
-            "minecraft:hoglin;-120000",
-            "minecraft:strider;-120000",
-            "minecraft:frog;-72000",
-            "minecraft:axolotl;-96000",
-            "minecraft:camel;-240000",
-            "minecraft:sniffer;-168000"
-    );
-
     public static final ForgeConfigSpec SPEC;
     private static final ForgeConfigSpec.IntValue DEFAULT_AGE;
-    private static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTRY_LIST;
     private static volatile int defaultAge = -24_000;
-    private static volatile Map<ResourceLocation, Integer> growthTimes = Map.of();
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         builder.push("growth_times");
-        DEFAULT_AGE = builder.defineInRange("default_age", -24_000, Integer.MIN_VALUE, -1);
-        ENTRY_LIST = builder.defineList("entries", DEFAULT_ENTRIES,
-                value -> value instanceof String);
+        DEFAULT_AGE = builder
+                .comment("Fallback baby age in ticks for every baby mob without an entry in",
+                        GrowthEntries.FILE_NAME + ". Vanilla uses -24000. Must be negative.")
+                .defineInRange("default_age", -24_000, Integer.MIN_VALUE, -1);
         builder.pop();
         SPEC = builder.build();
     }
 
     private RealisticGrowthConfig() { }
 
+    /**
+     * Runs from the mod constructor, before Forge loads the common config. This is the last moment
+     * the legacy {@code growth_times.entries} list can still be read from disk and migrated before
+     * Forge rewrites or discards it.
+     */
+    public static void bootstrapEntries() {
+        GrowthEntries.initialize(FMLPaths.CONFIGDIR.get());
+    }
+
     @SubscribeEvent
     public static void onConfigLoading(ModConfigEvent event) {
         if (event.getConfig().getSpec() == SPEC) {
-            loadEntries();
+            defaultAge = DEFAULT_AGE.get();
+            // Reload in case the entries file was created or edited while the TOML config loaded.
+            GrowthEntries.reload();
         }
     }
 
@@ -74,35 +56,13 @@ public final class RealisticGrowthConfig {
         return defaultAge;
     }
 
-    /** Returns an immutable snapshot suitable for use from the game thread. */
-    public static Map<ResourceLocation, Integer> growthTimes() {
-        return growthTimes;
+    /** Returns the age for one entity type, falling back to {@link #defaultAge()}. */
+    public static int ageFor(ResourceLocation entityId) {
+        return GrowthEntries.ageFor(entityId, defaultAge);
     }
 
-    private static void loadEntries() {
-        defaultAge = DEFAULT_AGE.get();
-        Map<ResourceLocation, Integer> parsed = new HashMap<>();
-        for (String entry : ENTRY_LIST.get()) {
-            String[] parts = entry.split(";", 2);
-            if (parts.length != 2) {
-                LOGGER.warn("Ignoring malformed RealisticGrowth entry: {}", entry);
-                continue;
-            }
-
-            ResourceLocation id = ResourceLocation.tryParse(parts[0].trim());
-            Integer age;
-            try {
-                age = Integer.valueOf(parts[1].trim());
-            } catch (NumberFormatException exception) {
-                age = null;
-            }
-            if (id == null || age == null || age >= 0) {
-                LOGGER.warn("Ignoring invalid RealisticGrowth entry (resource location and age must be valid, age negative): {}", entry);
-                continue;
-            }
-            parsed.put(id, age);
-        }
-        growthTimes = Collections.unmodifiableMap(parsed);
-        LOGGER.debug("Loaded {} RealisticGrowth growth-time entries", parsed.size());
+    /** Returns an immutable, file-ordered snapshot of the per-entity entries. */
+    public static Map<ResourceLocation, Integer> growthTimes() {
+        return GrowthEntries.growthTimes();
     }
 }
